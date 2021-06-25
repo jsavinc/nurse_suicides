@@ -1,0 +1,127 @@
+---
+title: "Nurse suicides from ONS data on suicides by occupation up to 2019"
+author: "Jan Savinc"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load packages
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)  # for tidy workflow
+library(readxl)  # for reading excel files
+library(lubridate)  # dealing with dates
+library(janitor)  # for cleaning column names
+library(patchwork)  # for assembling plots
+library(extrafont)  # for working with fonts
+library(openxlsx)  # for creating xlsx files
+library(knitr)  # for displaying tables in rmd
+library(curl)  # for downloading files
+library(glue)  # for programming strings
+```
+
+
+# Load data
+
+## Download data
+
+The ONS publishes a summary of suicides categorised by occupation, as an "ad-hoc" analysis: [ONS website](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/10807suicidebyoccupationenglandandwales2011to2018registrations)
+
+Two spreadsheets are provided for England & Wales:
+
+* https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/10807suicidebyoccupationenglandandwales2011to2018registrations/1.suicidebyoccupationengland.xlsx
+* https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/10807suicidebyoccupationenglandandwales2011to2018registrations/2.suicidebyoccupationwales.xls.xlsx
+
+
+```{r}
+url_england_2019 <- "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/10807suicidebyoccupationenglandandwales2011to2018registrations/1.suicidebyoccupationengland.xlsx"
+  
+url_wales_2019 <- "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/10807suicidebyoccupationenglandandwales2011to2018registrations/2.suicidebyoccupationwales.xls.xlsx"
+
+if (!dir.exists("./data")) dir.create("./data")  # create data dir if doesn't exist
+
+path_england_2019 <- "./data/1.suicidebyoccupationengland.xlsx"
+path_wales_2019 <- "./data/2.suicidebyoccupationwales.xls.xlsx"
+
+curl_download(url = url_england_2019, destfile = path_england_2019)
+curl_download(url = url_wales_2019, destfile = path_wales_2019)
+```
+
+
+## Clean & import
+
+Occupation classification used is Standard Occupational Classification (SOC).
+
+Both ONS spreadsheets have several tables. Tables 1-4 use increasingly detailed classifications of occupations:
+
+1. Major group
+2. Sub-major group
+3. Minor group
+4. Unit group
+
+
+```{r}
+classification_levels <- c("major","submajor","minor","unit")  # these are used as names for the data tables
+cell_ranges <- c(  # these correspond to where in the spreadsheets the data are stored, and correspond to the classification levels above
+  "Table 1!B3:U14",
+  "Table 2!B3:U29",
+  "Table 3!B14:U105",
+  "Table 4!B14:U384"
+)
+
+data_england_2019 <- map(
+  .x = cell_ranges,
+  .f = 
+    ~read_excel(path = path_england_2019, trim_ws = TRUE, range =.x) %>%
+      set_names(x = ., nm = c(names(.)[1:2], paste0("Males_",2011:2019), paste0("Females_",2011:2019))) %>%  # rename columns to include both sex & year
+      clean_names() %>%  # lowercase names, no spaces
+      slice(-1) %>%  # remove first row, it's used to specify year
+      pivot_longer(cols = males_2011:females_2019, names_to = c("sex","year"), names_sep = "_", values_to = "n")  # convert ot tidy format
+  ) %>% 
+  set_names(x = ., nm = classification_levels)  # name each element of list according to classification level
+
+data_wales_2019 <- map(
+  .x = cell_ranges,
+  .f = 
+    ~read_excel(path = path_wales_2019, trim_ws = TRUE, range =.x) %>%
+      set_names(x = ., nm = c(names(.)[1:2], paste0("Males_",2011:2019), paste0("Females_",2011:2019))) %>%  # rename columns to include both sex & year
+      clean_names() %>%  # lowercase names, no spaces
+      slice(-1) %>%  # remove first row, it's used to specify year
+      pivot_longer(cols = males_2011:females_2019, names_to = c("sex","year"), names_sep = "_", values_to = "n")  # convert ot tidy format
+  ) %>% 
+  set_names(x = ., nm = classification_levels)  # name each element of list according to classification level
+```
+
+
+# Analysing nurses' data
+
+We define nurses as:
+
+We'll also look at allied TODO!
+
+
+# Save most recent workspace for further analyses
+
+```{r}
+# save.image(file = "./workspace.RData", safe = TRUE)  # this is calling .GlobalEnv, which is empty
+save(list = ls(all.names = TRUE), file = "./workspace.RData", envir = environment())
+```
+
+# Print session info
+
+```{r}
+sessionInfo()
+```
+
