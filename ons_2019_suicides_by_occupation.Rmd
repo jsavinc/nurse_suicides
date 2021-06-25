@@ -102,14 +102,153 @@ data_wales_2019 <- map(
       pivot_longer(cols = males_2011:females_2019, names_to = c("sex","year"), names_sep = "_", values_to = "n")  # convert ot tidy format
   ) %>% 
   set_names(x = ., nm = classification_levels)  # name each element of list according to classification level
+
+## combine England & Wales in a single dataframe
+data_2019 <-
+  map2(
+  .x = data_england_2019,
+  .y = data_wales_2019,
+  .f = function(x,y) {
+    full_join(
+      x %>% rename(n_eng = n),
+      y %>% rename(n_wal = n),
+    ) %>%
+      mutate(n_engwal = n_eng + n_wal) %>%
+      pivot_longer(cols = c(n_eng, n_wal, n_engwal), names_to = "country", values_to = "n") %>%
+      mutate(country = case_when(
+        country == "n_eng" ~ "England",
+        country == "n_wal" ~ "Wales",
+        country == "n_engwal" ~ "England & Wales",
+        TRUE ~ NA_character_
+      )) %>%
+      pivot_wider(names_from = sex, values_from = n) %>%
+      mutate(all = males + females) %>%
+      pivot_longer(cols = c(males, females, all), names_to = "sex", values_to = "n") %>%
+      pivot_wider(names_from = year, values_from = n) %>%
+      mutate(all = rowSums(select(.,as.character(2011:2019)))) %>%
+      pivot_longer(cols = c("all",as.character(2011:2019)), names_to = "year", values_to = "n")
+  }
+)
 ```
 
 
-# Analysing nurses' data
+# Defining nurses & midwives in data
 
-We define nurses as:
+First I check through potentially relevant codes in SOC2010 across the classification levels, using keywords `nur`, `midw`, and `car`:
 
-We'll also look at allied TODO!
+```{r}
+soc_codes <-
+  data_2019 %>% map_df(
+    .x = .,
+    .f = ~ select(.data = .x, 1:2) %>% rename_all(.funs = ~ c("code", "description")) %>% distinct
+  )
+
+soc_codes %>%
+  filter(str_detect(description, regex("nurs|midw|car", ignore_case = TRUE))) %>%
+  print(n=nrow(.))
+```
+
+
+We define nurses as 3 digit (minor group) categories:
+
+* 223 Nursing and Midwifery Professionals
+
+Or separately in 4 digit (unit group) categories:
+
+* 2231 Nurses
+* 2232 Midwives
+* 6141 Nursing auxiliaries and assistants
+
+
+# Analysis
+
+## Number of nurses & Midwives who died by suicide
+
+```{r}
+data_2019$minor %>%
+  filter(soc_minor_group %in% c(223)) %>%
+  filter(country == "England & Wales") %>%
+  pivot_wider(names_from = year, values_from = n)
+```
+
+### Total suicides by year, country, sex
+
+```{r}
+data_2019$minor %>%
+  group_by(country, sex, year) %>%
+  summarise(n = sum(n), .groups = "drop") %>%
+  pivot_wider(names_from = year, values_from = n)
+```
+
+
+## Top 10 occupations by suicide
+
+```{r}
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "all") %>%
+  filter(year == "all") %>%
+  top_n(n = 10, wt = n) %>%
+  arrange(desc(n))
+
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "females") %>%
+  filter(year == "all") %>%
+  top_n(n = 10, wt = n) %>%
+  arrange(desc(n))
+
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "males") %>%
+  filter(year == "all") %>%
+  top_n(n = 10, wt = n) %>%
+  arrange(desc(n))
+```
+
+
+## Ranked Nurses & Midwives
+
+```{r}
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "all") %>%
+  group_by(year) %>%
+  mutate(rank = rank(-n, ties.method = "max")) %>%  # rank(-n, ties.method = "max") orders in descending order!
+  ungroup %>%
+  filter(soc_minor_group %in% c(223))
+
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "females") %>%
+  group_by(year) %>%
+  mutate(rank = rank(-n, ties.method = "max")) %>%  # rank(-n, ties.method = "max") orders in descending order!
+  ungroup %>%
+  filter(soc_minor_group %in% c(223))
+
+data_2019$minor %>%
+  filter(country == "England & Wales") %>%
+  filter(sex == "males") %>%
+  group_by(year) %>%
+  mutate(rank = rank(-n, ties.method = "max")) %>%  # rank(-n, ties.method = "max") orders in descending order!
+  ungroup %>%
+  filter(soc_minor_group %in% c(223))
+```
+
+
+### All year rankings in 4-digit SOC
+
+```{r}
+data_2019$unit %>%
+  filter(country == "England & Wales") %>%
+  filter(year == "all") %>%
+  group_by(sex) %>%
+  mutate(rank = rank(-n, ties.method = "max")) %>%  # rank(-n, ties.method = "max") orders in descending order!
+  ungroup %>%
+  filter(str_detect(description, regex("^nurses|nursing", ignore_case = TRUE)))
+```
+
+
 
 
 # Save most recent workspace for further analyses
